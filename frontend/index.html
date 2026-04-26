@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Logistics Capture</title>
+    <style>
+        body { font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; }
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; }
+        #sendBtn { background: #28a745; }
+        #sendBtn:hover { background: #1e7e34; }
+        #output { margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px; white-space: pre-wrap; font-family: monospace; }
+        input { margin: 10px 0; padding: 10px; }
+        img { max-width: 300px; margin-top: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        .section { border: 1px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 10px; background: #fafafa; }
+        h3 { margin-top: 0; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>📦 Logistics Capture System</h1>
+    
+    <div class="section">
+        <h3>📁 Upload an image file</h3>
+        <input type="file" id="fileInput" accept="image/*">
+        <div id="preview"></div>
+    </div>
+    
+    <button id="sendBtn">🚀 Send to OCR & Create Tracking</button>
+    
+    <div class="section">
+        <h3>📋 Result</h3>
+        <div id="output">Waiting for image...</div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const sendBtn = document.getElementById('sendBtn');
+        const output = document.getElementById('output');
+        
+        let currentImageData = null;
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                currentImageData = event.target.result;
+                preview.innerHTML = `<img src="${currentImageData}" alt="Preview">`;
+                output.innerHTML = '✅ Image loaded! Click "Send to OCR & Create Tracking"';
+            };
+            reader.readAsDataURL(file);
+        });
+        
+        sendBtn.addEventListener('click', async () => {
+            if (!currentImageData) {
+                output.innerHTML = '❌ Please select an image first!';
+                return;
+            }
+            
+            output.innerHTML = '⏳ Sending to OCR and creating tracking record...';
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Processing...';
+            
+            try {
+                const response = await fetch('https://feeble-earmark-preshow.ngrok-free.dev/ocr', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': '69420'
+                    },
+                    body: JSON.stringify({ image: currentImageData })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    let html = '✅ <strong>SUCCESS!</strong><br><br>';
+                    html += '<strong>Shipment ID:</strong> ' + data.shipment_id + '<br>';
+                    html += '<strong>Tracking URL:</strong> <a href="' + data.tracking_url + '" target="_blank">' + data.tracking_url + '</a><br>';
+                    html += '<strong>Detected Tracking Number:</strong> ' + (data.tracking_number || 'Not found') + '<br><br>';
+                    html += '<strong>Extracted Text:</strong><br><pre>' + (data.full_text || 'No text found') + '</pre>';
+                    output.innerHTML = html;
+                } else {
+                    output.innerHTML = '❌ Error: ' + (data.error || 'Unknown error');
+                }
+            } catch (error) {
+                output.innerHTML = '❌ Connection error: ' + error.message;
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '🚀 Send to OCR & Create Tracking';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Logistics Capture</title>
+    <style>
+        body { font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; }
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; cursor: pointer; }
+        #output { margin-top: 20px; padding: 10px; background: #f0f0f0; border-radius: 5px; }
+        video { border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <h1>📦 Logistics Capture</h1>
+    <video id="video" width="640" height="480" autoplay></video><br>
+    <button id="snap">📸 Take Photo</button>
+    <button id="send">📡 Send to Backend</button>
+    <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+    <div id="output">
+        <strong>Status:</strong> Loading webcam...
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const snapBtn = document.getElementById('snap');
+        const sendBtn = document.getElementById('send');
+        const output = document.getElementById('output');
+        
+        let currentImage = null;
+        
+        // Start webcam
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                output.innerHTML = '<strong>Status:</strong> ✅ Webcam ready. Take a photo!';
+            })
+            .catch(err => {
+                output.innerHTML = '<strong>Error:</strong> ' + err.message;
+            });
+        
+        // Take photo
+        snapBtn.onclick = () => {
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            currentImage = canvas.toDataURL('image/jpeg');
+            output.innerHTML = '<strong>Status:</strong> ✅ Photo taken! Click "Send to Backend"';
+        };
+        
+        // Send to backend
+        sendBtn.onclick = async () => {
+            if (!currentImage) {
+                output.innerHTML = '<strong>Status:</strong> ❌ Take a photo first!';
+                return;
+            }
+            
+            output.innerHTML = '<strong>Status:</strong> 📤 Sending to backend...';
+            
+            try {
+                const res = await fetch('http://127.0.0.1:5000/ocr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: currentImage })
+                });
+                const data = await res.json();
+                output.innerHTML = '<strong>Response from backend:</strong><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } catch (err) {
+                output.innerHTML = '<strong>Error:</strong> ' + err.message + '<br>Make sure backend is running!';
+            }
+        };
+    </script>
+</body>
+</ht
