@@ -14,7 +14,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Gmail credentials (replace with your actual email)
-GMAIL_EMAIL = "YOUR_EMAIL@gmail.com"  # <-- CHANGE THIS
+GMAIL_EMAIL = "cobweb.sticky@gmail.com"  # <-- CHANGE THIS
 GMAIL_APP_PASSWORD = "jgjw xljy kxrk gxyd".replace(" ", "")  # Your app password
 
 OCR_API_KEY = "helloworld"
