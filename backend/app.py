@@ -6,9 +6,16 @@ import re
 import sqlite3
 import uuid
 from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+import os
 
 app = Flask(__name__)
 CORS(app)
+
+# Gmail credentials (replace with your actual email)
+GMAIL_EMAIL = "YOUR_EMAIL@gmail.com"  # <-- CHANGE THIS
+GMAIL_APP_PASSWORD = "jgjw xljy kxrk gxyd".replace(" ", "")  # Your app password
 
 OCR_API_KEY = "helloworld"
 OCR_API_URL = "https://api.ocr.space/parse/image"
@@ -23,7 +30,8 @@ c.execute('''
         full_text TEXT,
         status TEXT,
         created_at TEXT,
-        last_updated TEXT
+        last_updated TEXT,
+        customer_email TEXT
     )
 ''')
 conn.commit()
@@ -41,6 +49,36 @@ def extract_tracking_number(text):
         if match:
             return match.group(0)
     return None
+
+def send_email_notification(to_email, shipment_id, new_status, tracking_url):
+    """Send email using Gmail SMTP"""
+    try:
+        subject = f"📦 Shipment {shipment_id} Status Update"
+        body = f"""
+Hello,
+
+Your shipment {shipment_id} status has been updated to: {new_status.upper()}
+
+Track your shipment here: {tracking_url}
+
+Thank you for using Logistics Tracking System.
+"""
+        
+        msg = MIMEText(body)
+        msg['Subject'] = subject
+        msg['From'] = GMAIL_EMAIL
+        msg['To'] = to_email
+        
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(GMAIL_EMAIL, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+        
+        print(f"✅ Email sent to {to_email}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Email failed: {e}")
+        return False
 
 @app.route('/')
 def home():
@@ -79,14 +117,16 @@ def ocr_process():
             shipment_id = str(uuid.uuid4())[:8]
             now = datetime.now().isoformat()
             
+            # Get customer email from request
+            customer_email = request.args.get('email')
+            
             conn = sqlite3.connect('shipments.db')
             c = conn.cursor()
-            c.execute('INSERT INTO shipments (id, tracking_number, full_text, status, created_at, last_updated) VALUES (?, ?, ?, ?, ?, ?)',
-                      (shipment_id, tracking_number, full_text[:1000], 'pending', now, now))
+            c.execute('INSERT INTO shipments (id, tracking_number, full_text, status, created_at, last_updated, customer_email) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                      (shipment_id, tracking_number, full_text[:1000], 'pending', now, now, customer_email))
             conn.commit()
             conn.close()
             
-            # IMPORTANT: Use your Render URL here
             return jsonify({
                 "status": "success",
                 "shipment_id": shipment_id,
@@ -104,10 +144,10 @@ def ocr_process():
 def list_shipments():
     conn = sqlite3.connect('shipments.db')
     c = conn.cursor()
-    c.execute('SELECT id, tracking_number, status, created_at FROM shipments ORDER BY created_at DESC')
+    c.execute('SELECT id, tracking_number, status, created_at, customer_email FROM shipments ORDER BY created_at DESC')
     rows = c.fetchall()
     conn.close()
-    shipments = [{"id": r[0], "tracking_number": r[1], "status": r[2], "created_at": r[3]} for r in rows]
+    shipments = [{"id": r[0], "tracking_number": r[1], "status": r[2], "created_at": r[3], "customer_email": r[4]} for r in rows]
     return jsonify(shipments)
 
 @app.route('/update/<shipment_id>/<new_status>', methods=['POST'])
@@ -122,8 +162,18 @@ def update_status(shipment_id, new_status):
         if c.rowcount == 0:
             conn.close()
             return jsonify({"error": "Shipment not found"}), 404
-            
+        
+        # Get customer email
+        c.execute('SELECT customer_email FROM shipments WHERE id = ?', (shipment_id,))
+        row = c.fetchone()
+        customer_email = row[0] if row else None
         conn.close()
+        
+        # Send email notification if email exists
+        if customer_email:
+            tracking_url = f"https://logistics-capture.onrender.com/track/{shipment_id}"
+            send_email_notification(customer_email, shipment_id, new_status, tracking_url)
+        
         return jsonify({"success": True, "shipment_id": shipment_id, "new_status": new_status})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -164,6 +214,7 @@ def tracking_page(shipment_id):
             <p><strong>Shipment ID:</strong> {row[0]}</p>
             <p><strong>Tracking Number:</strong> {row[1] if row[1] else 'Not detected'}</p>
             <p><strong>Created:</strong> {row[4]}</p>
+            <p><strong>Last Updated:</strong> {row[5] if row[5] else row[4]}</p>
             <hr>
             <h3>Extracted Text:</h3>
             <pre style="background:#f0f0f0; padding:15px;">{row[2][:500]}</pre>

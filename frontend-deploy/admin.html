@@ -21,6 +21,9 @@
         <label>Shipment ID:</label>
         <input type="text" id="shipmentId" placeholder="e.g., 89af6784">
         
+        <label>Customer Email (for notifications):</label>
+        <input type="email" id="customerEmail" placeholder="customer@example.com">
+        
         <label>New Status:</label>
         <select id="status">
             <option value="pending">Pending</option>
@@ -36,11 +39,13 @@
     <script>
         const updateBtn = document.getElementById('updateBtn');
         const shipmentId = document.getElementById('shipmentId');
+        const customerEmail = document.getElementById('customerEmail');
         const status = document.getElementById('status');
         const result = document.getElementById('result');
         
         updateBtn.addEventListener('click', async () => {
             const id = shipmentId.value.trim();
+            const email = customerEmail.value.trim();
             const newStatus = status.value;
             
             if (!id) {
@@ -51,7 +56,7 @@
             result.innerHTML = '⏳ Updating...';
             
             try {
-                const response = await fetch(`https://logistics-capture.onrender.com/update/${id}/${newStatus}`, {
+                const response = await fetch(`https://logistics-capture.onrender.com/update/${id}/${newStatus}?email=${encodeURIComponent(email)}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -59,8 +64,12 @@
                 const data = await response.json();
                 
                 if (response.ok) {
-                    result.innerHTML = `<span class="success">✅ Success! Shipment ${data.shipment_id} status updated to ${data.new_status}</span><br><br>
-                                       <a href="https://logistics-capture.onrender.com/track/${id}" target="_blank">View Tracking Page →</a>`;
+                    let message = `<span class="success">✅ Success! Shipment ${data.shipment_id} status updated to ${data.new_status}</span><br><br>`;
+                    if (email) {
+                        message += `<span class="success">📧 Email notification sent to ${email}</span><br><br>`;
+                    }
+                    message += `<a href="https://logistics-capture.onrender.com/track/${id}" target="_blank">View Tracking Page →</a>`;
+                    result.innerHTML = message;
                 } else {
                     result.innerHTML = `<span class="error">❌ Error: ${data.error}</span>`;
                 }
