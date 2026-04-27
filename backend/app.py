@@ -86,10 +86,11 @@ def ocr_process():
             conn.commit()
             conn.close()
             
+            # IMPORTANT: Use your Render URL here
             return jsonify({
                 "status": "success",
                 "shipment_id": shipment_id,
-                "tracking_url": f"https://feeble-earmark-preshow.ngrok-free.dev/track/{shipment_id}",
+                "tracking_url": f"https://logistics-capture.onrender.com/track/{shipment_id}",
                 "tracking_number": tracking_number,
                 "full_text": full_text[:500]
             })
@@ -144,12 +145,6 @@ def tracking_page(shipment_id):
             'delivered': '#d1e7dd'
         }.get(row[3].lower(), '#fff3cd')
         
-        status_border = {
-            'pending': '#ffc107',
-            'in transit': '#0d6efd',
-            'delivered': '#198754'
-        }.get(row[3].lower(), '#ffc107')
-        
         html_string = f"""
         <!DOCTYPE html>
         <html>
@@ -157,9 +152,8 @@ def tracking_page(shipment_id):
             <title>Track Shipment {shipment_id}</title>
             <style>
                 body {{ font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; }}
-                .status {{ padding: 20px; border-radius: 10px; margin: 20px 0; background: {status_color}; border: 1px solid {status_border}; }}
+                .status {{ padding: 20px; border-radius: 10px; margin: 20px 0; background: {status_color}; }}
                 h1 {{ color: #333; }}
-                .tracking-number {{ font-size: 24px; font-weight: bold; color: #007bff; }}
             </style>
         </head>
         <body>
@@ -168,20 +162,16 @@ def tracking_page(shipment_id):
                 <h2>Status: {row[3].upper()}</h2>
             </div>
             <p><strong>Shipment ID:</strong> {row[0]}</p>
-            <p><strong>Tracking Number:</strong> <span class="tracking-number">{row[1] if row[1] else 'Not detected'}</span></p>
+            <p><strong>Tracking Number:</strong> {row[1] if row[1] else 'Not detected'}</p>
             <p><strong>Created:</strong> {row[4]}</p>
-            <p><strong>Last Updated:</strong> {row[5] if row[5] else row[4]}</p>
             <hr>
             <h3>Extracted Text:</h3>
-            <pre style="background:#f0f0f0; padding:15px; border-radius:5px; overflow:auto;">{row[2][:500]}</pre>
-            <p><a href="/shipments">← View all shipments</a></p>
+            <pre style="background:#f0f0f0; padding:15px;">{row[2][:500]}</pre>
         </body>
         </html>
         """
     
-    resp = make_response(html_string)
-    resp.headers['ngrok-skip-browser-warning'] = '69420'
-    return resp
+    return html_string
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
