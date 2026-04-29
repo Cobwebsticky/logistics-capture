@@ -8,19 +8,27 @@
         #sendBtn { background: #28a745; }
         #sendBtn:hover { background: #1e7e34; }
         #output { margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px; white-space: pre-wrap; font-family: monospace; }
-        input { margin: 10px 0; padding: 10px; }
+        input, select { margin: 10px 0; padding: 10px; width: 100%; box-sizing: border-box; }
         img { max-width: 300px; margin-top: 10px; border: 1px solid #ccc; border-radius: 5px; }
         .section { border: 1px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 10px; background: #fafafa; }
         h3 { margin-top: 0; }
         a { color: #007bff; text-decoration: none; }
         a:hover { text-decoration: underline; }
+        .email-field { background: #e8f4f8; border: 1px solid #90caf9; }
+        .label { font-weight: bold; margin-bottom: 5px; display: block; }
     </style>
 </head>
 <body>
     <h1>📦 Logistics Capture System</h1>
     
+    <div class="section email-field">
+        <h3>📧 Customer Email (for notifications)</h3>
+        <p>Enter email to receive status updates when shipment changes</p>
+        <input type="email" id="customerEmail" placeholder="customer@example.com">
+    </div>
+    
     <div class="section">
-        <h3>📁 Upload an image file</h3>
+        <h3>📁 Upload Shipping Label</h3>
         <input type="file" id="fileInput" accept="image/*">
         <div id="preview"></div>
     </div>
@@ -29,7 +37,7 @@
     
     <div class="section">
         <h3>📋 Result</h3>
-        <div id="output">Waiting for image...</div>
+        <div id="output">1. Enter customer email (optional)<br>2. Upload an image<br>3. Click Send</div>
     </div>
 
     <script>
@@ -37,6 +45,7 @@
         const preview = document.getElementById('preview');
         const sendBtn = document.getElementById('sendBtn');
         const output = document.getElementById('output');
+        const customerEmail = document.getElementById('customerEmail');
         
         let currentImageData = null;
         
@@ -48,7 +57,7 @@
             reader.onload = (event) => {
                 currentImageData = event.target.result;
                 preview.innerHTML = `<img src="${currentImageData}" alt="Preview">`;
-                output.innerHTML = '✅ Image loaded! Click "Send to OCR & Create Tracking"';
+                output.innerHTML = '✅ Image loaded! Enter email and click Send.';
             };
             reader.readAsDataURL(file);
         });
@@ -59,7 +68,13 @@
                 return;
             }
             
-            output.innerHTML = '⏳ Sending to OCR and creating tracking record...';
+            const email = customerEmail.value.trim();
+            if (email) {
+                output.innerHTML = '⏳ Sending to OCR with email notification...';
+            } else {
+                output.innerHTML = '⏳ Sending to OCR (no email provided)...';
+            }
+            
             sendBtn.disabled = true;
             sendBtn.textContent = 'Processing...';
             
@@ -69,7 +84,10 @@
                     headers: { 
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ image: currentImageData })
+                    body: JSON.stringify({ 
+                        image: currentImageData,
+                        email: email
+                    })
                 });
                 
                 const data = await response.json();
@@ -78,9 +96,18 @@
                     let html = '✅ <strong>SUCCESS!</strong><br><br>';
                     html += '<strong>Shipment ID:</strong> ' + data.shipment_id + '<br>';
                     html += '<strong>Tracking URL:</strong> <a href="' + data.tracking_url + '" target="_blank">' + data.tracking_url + '</a><br>';
-                    html += '<strong>Detected Tracking Number:</strong> ' + (data.tracking_number || 'Not found') + '<br><br>';
-                    html += '<strong>Extracted Text:</strong><br><pre>' + (data.full_text || 'No text found') + '</pre>';
+                    html += '<strong>Detected Tracking Number:</strong> ' + (data.tracking_number || 'Not found') + '<br>';
+                    if (email) {
+                        html += '<strong>📧 Email notification sent to:</strong> ' + email + '<br>';
+                    }
+                    html += '<br><strong>Extracted Text:</strong><br><pre>' + (data.full_text || 'No text found') + '</pre>';
                     output.innerHTML = html;
+                    
+                    // Clear email field after successful upload
+                    customerEmail.value = '';
+                    currentImageData = null;
+                    preview.innerHTML = '';
+                    fileInput.value = '';
                 } else {
                     output.innerHTML = '❌ Error: ' + (data.error || 'Unknown error');
                 }
