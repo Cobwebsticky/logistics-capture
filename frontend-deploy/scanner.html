@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Barcode/QR Scanner | Logistics Capture</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        #reader video {
+            border-radius: 16px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <nav class="gradient-bg shadow-lg">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <i class="ri-qr-code-line text-2xl text-white"></i>
+                    <span class="text-xl font-bold text-white">Barcode/QR Scanner</span>
+                </div>
+                <a href="/" class="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-all flex items-center space-x-2">
+                    <i class="ri-home-line"></i>
+                    <span>Back</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-6 py-12">
+        <div class="max-w-2xl mx-auto">
+            <!-- Scanner Card -->
+            <div class="bg-white rounded-2xl shadow-xl p-8 mb-6">
+                <div class="text-center mb-6">
+                    <i class="ri-camera-line text-5xl text-purple-600"></i>
+                    <h2 class="text-2xl font-bold text-gray-800 mt-2">Scan Shipping Label</h2>
+                    <p class="text-gray-600">Position the barcode or QR code in front of your camera</p>
+                </div>
+                
+                <div id="reader"></div>
+                <div id="scan-result" class="mt-6 hidden">
+                    <div class="bg-green-100 border border-green-400 rounded-lg p-4">
+                        <p class="font-semibold text-green-800 mb-2">✅ Scanned Successfully!</p>
+                        <p id="scanned-data" class="text-gray-700 break-all"></p>
+                    </div>
+                </div>
+                
+                <div class="mt-6 text-center">
+                    <button id="start-scan" class="gradient-bg text-white px-6 py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center space-x-2 w-full">
+                        <i class="ri-camera-line"></i>
+                        <span>Start Camera</span>
+                    </button>
+                    <button id="stop-scan" class="mt-3 bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600 transition-all flex items-center justify-center space-x-2 w-full hidden">
+                        <i class="ri-stop-circle-line"></i>
+                        <span>Stop Camera</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Use Scanned Data Card -->
+            <div class="bg-white rounded-2xl shadow-xl p-8">
+                <div class="flex items-center space-x-3 mb-4">
+                    <i class="ri-ship-2-line text-2xl text-purple-600"></i>
+                    <h3 class="text-xl font-bold text-gray-800">Create Shipment</h3>
+                </div>
+                <p class="text-gray-600 mb-4">Use scanned data to auto-fill tracking information</p>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-semibold mb-2">Tracking Number</label>
+                    <input type="text" id="tracking-number" placeholder="Scan barcode or enter manually" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-semibold mb-2">Customer Email</label>
+                    <input type="email" id="customer-email" placeholder="customer@example.com" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+                
+                <button id="create-shipment" class="w-full gradient-bg text-white font-semibold py-3 rounded-lg transition-all hover:opacity-90 flex items-center justify-center space-x-2">
+                    <i class="ri-send-plane-line"></i>
+                    <span>Create Shipment</span>
+                </button>
+                
+                <div id="shipment-result" class="mt-6 hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let html5QrCode = null;
+        let isScanning = false;
+        
+        const startBtn = document.getElementById('start-scan');
+        const stopBtn = document.getElementById('stop-scan');
+        const readerDiv = document.getElementById('reader');
+        const scanResult = document.getElementById('scan-result');
+        const scannedData = document.getElementById('scanned-data');
+        const trackingInput = document.getElementById('tracking-number');
+        
+        startBtn.addEventListener('click', () => {
+            if (html5QrCode && isScanning) {
+                return;
+            }
+            
+            startBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            readerDiv.classList.remove('hidden');
+            
+            html5QrCode = new Html5Qrcode("reader");
+            
+            const config = {
+                fps: 10,
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0
+            };
+            
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText, decodedResult) => {
+                    trackingInput.value = decodedText;
+                    scannedData.innerHTML = `<strong>Scanned:</strong> ${decodedText}`;
+                    scanResult.classList.remove('hidden');
+                    
+                    if (html5QrCode && isScanning) {
+                        html5QrCode.stop();
+                        isScanning = false;
+                        startBtn.classList.remove('hidden');
+                        stopBtn.classList.add('hidden');
+                        readerDiv.classList.add('hidden');
+                    }
+                },
+                (errorMessage) => {
+                    console.log(errorMessage);
+                }
+            ).then(() => {
+                isScanning = true;
+            }).catch((err) => {
+                console.error("Failed to start scanner", err);
+                alert("Could not start camera. Please ensure you have granted camera permissions.");
+                startBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+            });
+        });
+        
+        stopBtn.addEventListener('click', () => {
+            if (html5QrCode && isScanning) {
+                html5QrCode.stop();
+                isScanning = false;
+            }
+            startBtn.classList.remove('hidden');
+            stopBtn.classList.add('hidden');
+            readerDiv.classList.add('hidden');
+        });
+        
+        const createBtn = document.getElementById('create-shipment');
+        const shipmentResult = document.getElementById('shipment-result');
+        const customerEmail = document.getElementById('customer-email');
+        
+        createBtn.addEventListener('click', async () => {
+            const trackingNumber = trackingInput.value.trim();
+            const email = customerEmail.value.trim();
+            
+            if (!trackingNumber) {
+                alert('Please scan or enter a tracking number');
+                return;
+            }
+            
+            createBtn.disabled = true;
+            createBtn.innerHTML = '<i class="ri-loader-4-line animate-spin"></i><span>Creating...</span>';
+            
+            try {
+                const placeholderText = `Tracking Number: ${trackingNumber}`;
+                const base64Image = btoa(unescape(encodeURIComponent(placeholderText)));
+                
+                const response = await fetch('https://logistics-capture.onrender.com/ocr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image: `data:text/plain;base64,${base64Image}`,
+                        email: email
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    shipmentResult.classList.remove('hidden');
+                    shipmentResult.innerHTML = `
+                        <div class="bg-green-100 border border-green-400 rounded-lg p-4">
+                            <p class="font-semibold text-green-800 mb-2">✅ Shipment Created!</p>
+                            <p><strong>Shipment ID:</strong> ${data.shipment_id}</p>
+                            <p><strong>Tracking URL:</strong> <a href="${data.tracking_url}" target="_blank" class="text-purple-600 hover:underline">${data.tracking_url}</a></p>
+                            <p class="mt-3"><strong>📧 Notification sent to:</strong> ${email || 'No email provided'}</p>
+                        </div>
+                    `;
+                    trackingInput.value = '';
+                    customerEmail.value = '';
+                    scanResult.classList.add('hidden');
+                } else {
+                    shipmentResult.classList.remove('hidden');
+                    shipmentResult.innerHTML = `<div class="bg-red-100 border border-red-400 rounded-lg p-4 text-red-800">❌ Error: ${data.error}</div>`;
+                }
+            } catch (error) {
+                shipmentResult.classList.remove('hidden');
+                shipmentResult.innerHTML = `<div class="bg-red-100 border border-red-400 rounded-lg p-4 text-red-800">❌ Connection error: ${error.message}</div>`;
+            } finally {
+                createBtn.disabled = false;
+                createBtn.innerHTML = '<i class="ri-send-plane-line"></i><span>Create Shipment</span>';
+            }
+        });
+    </script>
+</body>
+</html>
