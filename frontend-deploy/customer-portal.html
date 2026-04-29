@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Customer Portal - Logistics Tracking</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .card { background: white; border-radius: 10px; padding: 25px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin-top: 0; }
+        h2 { color: #555; font-size: 1.3rem; }
+        input, button { padding: 10px 15px; margin: 5px 0; font-size: 16px; border-radius: 5px; }
+        input { border: 1px solid #ddd; width: 100%; max-width: 300px; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; transition: background 0.3s; }
+        button:hover { background: #0056b3; }
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #1e7e34; }
+        .shipment-card { background: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .status { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .status-pending { background: #ffc107; color: #333; }
+        .status-in-transit { background: #17a2b8; color: white; }
+        .status-delivered { background: #28a745; color: white; }
+        .hidden { display: none; }
+        .nav { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; display: flex; gap: 15px; align-items: center; }
+        .nav a { color: #007bff; text-decoration: none; cursor: pointer; }
+        .error { color: red; font-size: 14px; margin-top: 5px; }
+        .success { color: green; font-size: 14px; margin-top: 5px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
+        th { background: #007bff; color: white; }
+        tr:hover { background: #f1f1f1; }
+        @media (max-width: 768px) { th, td { display: block; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="card" id="auth-section">
+        <h1>📦 Customer Portal</h1>
+        <div id="login-form">
+            <h2>Login</h2>
+            <input type="email" id="login-email" placeholder="Email"><br>
+            <input type="password" id="login-password" placeholder="Password"><br>
+            <button onclick="login()">Login</button>
+            <p><a onclick="showRegister()" style="cursor:pointer; color:#007bff;">Create an account</a></p>
+            <div id="login-message"></div>
+        </div>
+        <div id="register-form" class="hidden">
+            <h2>Register</h2>
+            <input type="text" id="reg-name" placeholder="Full Name"><br>
+            <input type="email" id="reg-email" placeholder="Email"><br>
+            <input type="password" id="reg-password" placeholder="Password"><br>
+            <button onclick="register()">Register</button>
+            <p><a onclick="showLogin()" style="cursor:pointer; color:#007bff;">Back to Login</a></p>
+            <div id="register-message"></div>
+        </div>
+    </div>
+    <div id="dashboard-section" class="hidden">
+        <div class="nav">
+            <strong>Welcome, <span id="user-name"></span></strong>
+            <a onclick="logout()">Logout</a>
+            <a onclick="loadShipments()">Refresh</a>
+            <a href="/">📤 Upload Page</a>
+        </div>
+        <div class="card">
+            <h2>Link a Shipment</h2>
+            <p>Enter your shipment ID to track it in your dashboard</p>
+            <input type="text" id="link-shipment-id" placeholder="Shipment ID (e.g., 3a6a2aaa)">
+            <button onclick="linkShipment()">Link Shipment</button>
+            <div id="link-message"></div>
+        </div>
+        <div class="card">
+            <h2>My Shipments</h2>
+            <div id="shipments-list">Loading...</div>
+        </div>
+    </div>
+</div>
+<script>
+    let currentUserId = null;
+    function showRegister() { document.getElementById('login-form').classList.add('hidden'); document.getElementById('register-form').classList.remove('hidden'); }
+    function showLogin() { document.getElementById('register-form').classList.add('hidden'); document.getElementById('login-form').classList.remove('hidden'); }
+    async function register() {
+        const name = document.getElementById('reg-name').value;
+        const email = document.getElementById('reg-email').value;
+        const password = document.getElementById('reg-password').value;
+        const msgDiv = document.getElementById('register-message');
+        try {
+            const res = await fetch('https://logistics-capture.onrender.com/api/register', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, email, password})
+            });
+            const data = await res.json();
+            if (data.success) { msgDiv.innerHTML = '<span class="success">✅ Registration successful! Please login.</span>'; setTimeout(() => showLogin(), 2000); }
+            else { msgDiv.innerHTML = '<span class="error">❌ ' + data.error + '</span>'; }
+        } catch(err) { msgDiv.innerHTML = '<span class="error">❌ Connection error</span>'; }
+    }
+    async function login() {
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        const msgDiv = document.getElementById('login-message');
+        try {
+            const res = await fetch('https://logistics-capture.onrender.com/api/login', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({email, password})
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentUserId = data.user_id;
+                document.getElementById('user-name').innerHTML = data.name || email;
+                document.getElementById('auth-section').classList.add('hidden');
+                document.getElementById('dashboard-section').classList.remove('hidden');
+                localStorage.setItem('userId', currentUserId);
+                loadShipments();
+            } else { msgDiv.innerHTML = '<span class="error">❌ ' + data.error + '</span>'; }
+        } catch(err) { msgDiv.innerHTML = '<span class="error">❌ Connection error</span>'; }
+    }
+    function logout() {
+        currentUserId = null;
+        localStorage.removeItem('userId');
+        document.getElementById('dashboard-section').classList.add('hidden');
+        document.getElementById('auth-section').classList.remove('hidden');
+        document.getElementById('login-email').value = '';
+        document.getElementById('login-password').value = '';
+    }
+    async function loadShipments() {
+        if (!currentUserId) return;
+        const container = document.getElementById('shipments-list');
+        container.innerHTML = 'Loading...';
+        try {
+            const res = await fetch(`https://logistics-capture.onrender.com/api/user/shipments/${currentUserId}`);
+            const shipments = await res.json();
+            if (shipments.length === 0) { container.innerHTML = '<p>No shipments linked yet. Use "Link a Shipment" above.</p>'; return; }
+            let html = '</tr><table> <thead><tr><th>Shipment ID</th><th>Tracking Number</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody>';
+            for (const s of shipments) {
+                let statusClass = s.status === 'pending' ? 'status-pending' : (s.status === 'in transit' ? 'status-in-transit' : 'status-delivered');
+                html += `<tr><td>${s.id}</td><td>${s.tracking_number || 'Not detected'}</td><td><span class="status ${statusClass}">${s.status.toUpperCase()}</span></td><td>${new Date(s.created_at).toLocaleDateString()}</td><td><a href="https://logistics-capture.onrender.com/track/${s.id}" target="_blank">Track</a></td></tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch(err) { container.innerHTML = '<p class="error">Error loading shipments</p>'; }
+    }
+    async function linkShipment() {
+        const shipmentId = document.getElementById('link-shipment-id').value.trim();
+        const msgDiv = document.getElementById('link-message');
+        if (!shipmentId) { msgDiv.innerHTML = '<span class="error">Please enter a Shipment ID</span>'; return; }
+        try {
+            const res = await fetch('https://logistics-capture.onrender.com/api/link-shipment', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: currentUserId, shipment_id: shipmentId})
+            });
+            const data = await res.json();
+            if (data.success) { msgDiv.innerHTML = '<span class="success">✅ Shipment linked successfully!</span>'; document.getElementById('link-shipment-id').value = ''; loadShipments(); }
+            else { msgDiv.innerHTML = '<span class="error">❌ Failed to link shipment</span>'; }
+        } catch(err) { msgDiv.innerHTML = '<span class="error">❌ Connection error</span>'; }
+    }
+    const savedUserId = localStorage.getItem('userId');
+    if (savedUserId) { currentUserId = savedUserId; document.getElementById('auth-section').classList.add('hidden'); document.getElementById('dashboard-section').classList.remove('hidden'); document.getElementById('user-name').innerHTML = 'Customer'; loadShipments(); }
+</script>
+</body>
+</html>
