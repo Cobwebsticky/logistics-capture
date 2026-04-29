@@ -40,7 +40,6 @@
 
     <div class="container mx-auto px-6 py-12">
         <div class="max-w-2xl mx-auto">
-            <!-- Scanner Card -->
             <div class="bg-white rounded-2xl shadow-xl p-8 mb-6">
                 <div class="text-center mb-6">
                     <i class="ri-camera-line text-5xl text-purple-600"></i>
@@ -48,7 +47,17 @@
                     <p class="text-gray-600">Position the barcode or QR code in front of your camera</p>
                 </div>
                 
-                <div id="reader"></div>
+                <!-- Camera selector for better compatibility -->
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-semibold mb-2">Camera</label>
+                    <select id="camera-select" class="w-full px-4 py-3 border border-gray-300 rounded-lg">
+                        <option value="environment">Back Camera (Phone) / Default (Laptop)</option>
+                        <option value="user">Front Camera (Selfie)</option>
+                    </select>
+                </div>
+                
+                <div id="reader" style="width:100%;"></div>
+                
                 <div id="scan-result" class="mt-6 hidden">
                     <div class="bg-green-100 border border-green-400 rounded-lg p-4">
                         <p class="font-semibold text-green-800 mb-2">✅ Scanned Successfully!</p>
@@ -56,25 +65,23 @@
                     </div>
                 </div>
                 
-                <div class="mt-6 text-center">
-                    <button id="start-scan" class="gradient-bg text-white px-6 py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center space-x-2 w-full">
+                <div class="mt-6 flex gap-3">
+                    <button id="start-scan" class="flex-1 gradient-bg text-white px-6 py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center space-x-2">
                         <i class="ri-camera-line"></i>
                         <span>Start Camera</span>
                     </button>
-                    <button id="stop-scan" class="mt-3 bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600 transition-all flex items-center justify-center space-x-2 w-full hidden">
+                    <button id="stop-scan" class="flex-1 bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600 transition-all flex items-center justify-center space-x-2 hidden">
                         <i class="ri-stop-circle-line"></i>
                         <span>Stop Camera</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Use Scanned Data Card -->
             <div class="bg-white rounded-2xl shadow-xl p-8">
                 <div class="flex items-center space-x-3 mb-4">
                     <i class="ri-ship-2-line text-2xl text-purple-600"></i>
                     <h3 class="text-xl font-bold text-gray-800">Create Shipment</h3>
                 </div>
-                <p class="text-gray-600 mb-4">Use scanned data to auto-fill tracking information</p>
                 
                 <div class="mb-4">
                     <label class="block text-gray-700 font-semibold mb-2">Tracking Number</label>
@@ -103,18 +110,21 @@
         const startBtn = document.getElementById('start-scan');
         const stopBtn = document.getElementById('stop-scan');
         const readerDiv = document.getElementById('reader');
+        const cameraSelect = document.getElementById('camera-select');
         const scanResult = document.getElementById('scan-result');
         const scannedData = document.getElementById('scanned-data');
         const trackingInput = document.getElementById('tracking-number');
         
-        startBtn.addEventListener('click', () => {
+        async function startScanner() {
             if (html5QrCode && isScanning) {
-                return;
+                await stopScanner();
             }
+            
+            const cameraMode = cameraSelect.value; // 'environment' or 'user'
             
             startBtn.classList.add('hidden');
             stopBtn.classList.remove('hidden');
-            readerDiv.classList.remove('hidden');
+            readerDiv.style.display = 'block';
             
             html5QrCode = new Html5Qrcode("reader");
             
@@ -124,45 +134,60 @@
                 aspectRatio: 1.0
             };
             
-            html5QrCode.start(
-                { facingMode: "environment" },
-                config,
-                (decodedText, decodedResult) => {
-                    trackingInput.value = decodedText;
-                    scannedData.innerHTML = `<strong>Scanned:</strong> ${decodedText}`;
-                    scanResult.classList.remove('hidden');
-                    
-                    if (html5QrCode && isScanning) {
-                        html5QrCode.stop();
-                        isScanning = false;
-                        startBtn.classList.remove('hidden');
-                        stopBtn.classList.add('hidden');
-                        readerDiv.classList.add('hidden');
+            try {
+                await html5QrCode.start(
+                    { facingMode: cameraMode },
+                    config,
+                    (decodedText, decodedResult) => {
+                        trackingInput.value = decodedText;
+                        scannedData.innerHTML = `<strong>Scanned:</strong> ${decodedText}`;
+                        scanResult.classList.remove('hidden');
+                        
+                        // Auto-stop after successful scan
+                        stopScanner();
+                    },
+                    (errorMessage) => {
+                        // Silent error handling - continue scanning
+                        console.log("Scan error (normal):", errorMessage);
                     }
-                },
-                (errorMessage) => {
-                    console.log(errorMessage);
-                }
-            ).then(() => {
+                );
                 isScanning = true;
-            }).catch((err) => {
+            } catch (err) {
                 console.error("Failed to start scanner", err);
-                alert("Could not start camera. Please ensure you have granted camera permissions.");
+                alert("Camera error: " + err.message + "\n\nMake sure you have granted camera permission and are using HTTPS.");
                 startBtn.classList.remove('hidden');
                 stopBtn.classList.add('hidden');
-            });
-        });
-        
-        stopBtn.addEventListener('click', () => {
-            if (html5QrCode && isScanning) {
-                html5QrCode.stop();
-                isScanning = false;
+                readerDiv.style.display = 'none';
             }
+        }
+        
+        async function stopScanner() {
+            if (html5QrCode && isScanning) {
+                try {
+                    await html5QrCode.stop();
+                } catch (e) {
+                    console.log("Stop error", e);
+                }
+                html5QrCode.clear();
+                html5QrCode = null;
+            }
+            isScanning = false;
             startBtn.classList.remove('hidden');
             stopBtn.classList.add('hidden');
-            readerDiv.classList.add('hidden');
+            readerDiv.style.display = 'none';
+        }
+        
+        startBtn.addEventListener('click', startScanner);
+        stopBtn.addEventListener('click', stopScanner);
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (html5QrCode && isScanning) {
+                html5QrCode.stop().catch(e => console.log(e));
+            }
         });
         
+        // Create shipment
         const createBtn = document.getElementById('create-shipment');
         const shipmentResult = document.getElementById('shipment-result');
         const customerEmail = document.getElementById('customer-email');
@@ -219,6 +244,9 @@
                 createBtn.innerHTML = '<i class="ri-send-plane-line"></i><span>Create Shipment</span>';
             }
         });
+        
+        // Initially hide reader
+        readerDiv.style.display = 'none';
     </script>
 </body>
 </html>
