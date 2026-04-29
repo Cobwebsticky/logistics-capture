@@ -5,20 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Barcode/QR Scanner | Logistics Capture</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css" rel="stylesheet">
+    <!-- Use a more reliable QR code scanner library -->
+    <script src="https://unpkg.com/@zxing/library@0.21.1/umd/index.min.js"></script>
     <style>
         .gradient-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-        #reader {
+        #video-preview {
             width: 100%;
             max-width: 500px;
             margin: 0 auto;
-        }
-        #reader video {
             border-radius: 16px;
-            width: 100%;
+            background: #000;
         }
     </style>
 </head>
@@ -47,16 +46,8 @@
                     <p class="text-gray-600">Position the barcode or QR code in front of your camera</p>
                 </div>
                 
-                <!-- Camera selector for better compatibility -->
-                <div class="mb-4">
-                    <label class="block text-gray-700 font-semibold mb-2">Camera</label>
-                    <select id="camera-select" class="w-full px-4 py-3 border border-gray-300 rounded-lg">
-                        <option value="environment">Back Camera (Phone) / Default (Laptop)</option>
-                        <option value="user">Front Camera (Selfie)</option>
-                    </select>
-                </div>
-                
-                <div id="reader" style="width:100%;"></div>
+                <!-- Video element for camera -->
+                <video id="video-preview" style="width:100%; max-width:500px; margin:0 auto; display:none;" playsinline></video>
                 
                 <div id="scan-result" class="mt-6 hidden">
                     <div class="bg-green-100 border border-green-400 rounded-lg p-4">
@@ -75,6 +66,7 @@
                         <span>Stop Camera</span>
                     </button>
                 </div>
+                <div id="camera-status" class="text-center text-sm text-gray-500 mt-3"></div>
             </div>
 
             <div class="bg-white rounded-2xl shadow-xl p-8">
@@ -104,86 +96,94 @@
     </div>
 
     <script>
-        let html5QrCode = null;
+        let videoElement = document.getElementById('video-preview');
+        let codeReader = null;
         let isScanning = false;
         
         const startBtn = document.getElementById('start-scan');
         const stopBtn = document.getElementById('stop-scan');
-        const readerDiv = document.getElementById('reader');
-        const cameraSelect = document.getElementById('camera-select');
         const scanResult = document.getElementById('scan-result');
         const scannedData = document.getElementById('scanned-data');
         const trackingInput = document.getElementById('tracking-number');
+        const cameraStatus = document.getElementById('camera-status');
         
         async function startScanner() {
-            if (html5QrCode && isScanning) {
+            if (isScanning) {
                 await stopScanner();
             }
             
-            const cameraMode = cameraSelect.value; // 'environment' or 'user'
-            
+            cameraStatus.innerHTML = 'Requesting camera permission...';
             startBtn.classList.add('hidden');
-            stopBtn.classList.remove('hidden');
-            readerDiv.style.display = 'block';
-            
-            html5QrCode = new Html5Qrcode("reader");
-            
-            const config = {
-                fps: 10,
-                qrbox: { width: 250, height: 250 },
-                aspectRatio: 1.0
-            };
             
             try {
-                await html5QrCode.start(
-                    { facingMode: cameraMode },
-                    config,
-                    (decodedText, decodedResult) => {
+                codeReader = new ZXing.BrowserMultiFormatReader();
+                const videoInputDevices = await codeReader.listVideoInputDevices();
+                
+                if (videoInputDevices.length === 0) {
+                    throw new Error('No camera found');
+                }
+                
+                // Prefer back camera (environment) if available
+                let selectedDeviceId = videoInputDevices[0].deviceId;
+                for (let device of videoInputDevices) {
+                    if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment')) {
+                        selectedDeviceId = device.deviceId;
+                        break;
+                    }
+                }
+                
+                videoElement.style.display = 'block';
+                stopBtn.classList.remove('hidden');
+                
+                await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElement, (result, err) => {
+                    if (result) {
+                        const decodedText = result.text;
                         trackingInput.value = decodedText;
                         scannedData.innerHTML = `<strong>Scanned:</strong> ${decodedText}`;
                         scanResult.classList.remove('hidden');
-                        
-                        // Auto-stop after successful scan
+                        // Stop scanner after successful scan
                         stopScanner();
-                    },
-                    (errorMessage) => {
-                        // Silent error handling - continue scanning
-                        console.log("Scan error (normal):", errorMessage);
                     }
-                );
+                    if (err && !err) {
+                        // ignore
+                    }
+                });
+                
                 isScanning = true;
+                cameraStatus.innerHTML = 'Camera active. Point at a barcode/QR code.';
             } catch (err) {
-                console.error("Failed to start scanner", err);
-                alert("Camera error: " + err.message + "\n\nMake sure you have granted camera permission and are using HTTPS.");
+                console.error(err);
+                cameraStatus.innerHTML = 'Error: ' + err.message;
+                alert('Camera error: ' + err.message + '\n\nMake sure you have granted camera permission and are using HTTPS.');
                 startBtn.classList.remove('hidden');
                 stopBtn.classList.add('hidden');
-                readerDiv.style.display = 'none';
+                videoElement.style.display = 'none';
             }
         }
         
         async function stopScanner() {
-            if (html5QrCode && isScanning) {
+            if (codeReader && isScanning) {
                 try {
-                    await html5QrCode.stop();
+                    await codeReader.reset();
+                    codeReader = null;
                 } catch (e) {
-                    console.log("Stop error", e);
+                    console.log('Reset error', e);
                 }
-                html5QrCode.clear();
-                html5QrCode = null;
             }
             isScanning = false;
             startBtn.classList.remove('hidden');
             stopBtn.classList.add('hidden');
-            readerDiv.style.display = 'none';
+            videoElement.style.display = 'none';
+            cameraStatus.innerHTML = '';
         }
         
         startBtn.addEventListener('click', startScanner);
         stopBtn.addEventListener('click', stopScanner);
         
-        // Clean up on page unload
+        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
-            if (html5QrCode && isScanning) {
-                html5QrCode.stop().catch(e => console.log(e));
+            if (codeReader && isScanning) {
+                codeReader.reset().catch(e => console.log(e));
             }
         });
         
@@ -244,9 +244,6 @@
                 createBtn.innerHTML = '<i class="ri-send-plane-line"></i><span>Create Shipment</span>';
             }
         });
-        
-        // Initially hide reader
-        readerDiv.style.display = 'none';
     </script>
 </body>
 </html>
