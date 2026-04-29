@@ -1,58 +1,111 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Logistics Capture</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logistics Capture | Smart Shipping Label OCR</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css" rel="stylesheet">
     <style>
-        body { font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; }
-        button { padding: 10px 20px; margin: 10px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; }
-        #sendBtn { background: #28a745; }
-        #sendBtn:hover { background: #1e7e34; }
-        #output { margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px; white-space: pre-wrap; font-family: monospace; }
-        input, select { margin: 10px 0; padding: 10px; width: 100%; box-sizing: border-box; }
-        img { max-width: 300px; margin-top: 10px; border: 1px solid #ccc; border-radius: 5px; }
-        .section { border: 1px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 10px; background: #fafafa; }
-        h3 { margin-top: 0; }
-        a { color: #007bff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .email-field { background: #e8f4f8; border: 1px solid #90caf9; }
-        .label { font-weight: bold; margin-bottom: 5px; display: block; }
-        .portal-link { text-align: right; margin-bottom: 20px; }
-        .portal-link a { background: #007bff; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none; }
-        .portal-link a:hover { background: #0056b3; }
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+        }
+        .status-badge {
+            transition: all 0.3s ease;
+        }
     </style>
 </head>
-<body>
-    <!-- Customer Portal Link -->
-    <div class="portal-link">
-        <a href="/customer-portal.html">🔐 Customer Portal →</a>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="gradient-bg shadow-lg">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <i class="ri-ship-2-line text-3xl text-white"></i>
+                    <span class="text-2xl font-bold text-white">Logistics Capture</span>
+                </div>
+                <a href="/customer-portal.html" class="bg-white/20 hover:bg-white/30 text-white px-5 py-2 rounded-lg transition-all flex items-center space-x-2 backdrop-blur-sm">
+                    <i class="ri-user-line"></i>
+                    <span>Customer Portal</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <div class="gradient-bg py-16">
+        <div class="container mx-auto px-6 text-center">
+            <h1 class="text-4xl md:text-5xl font-bold text-white mb-4">Smart Shipping Label OCR</h1>
+            <p class="text-xl text-white/90 max-w-2xl mx-auto">Upload a shipping label, and we'll automatically extract tracking info and create a trackable shipment.</p>
+        </div>
     </div>
 
-    <h1>📦 Logistics Capture System</h1>
-    
-    <div class="section email-field">
-        <h3>📧 Customer Email (for notifications)</h3>
-        <p>Enter email to receive status updates when shipment changes</p>
-        <input type="email" id="customerEmail" placeholder="customer@example.com">
+    <!-- Main Content -->
+    <div class="container mx-auto px-6 py-12">
+        <div class="max-w-3xl mx-auto">
+            <!-- Email Section -->
+            <div class="bg-white rounded-2xl shadow-xl p-8 mb-8 card-hover">
+                <div class="flex items-center space-x-3 mb-4">
+                    <i class="ri-mail-line text-2xl text-purple-600"></i>
+                    <h2 class="text-2xl font-bold text-gray-800">Email Notifications</h2>
+                </div>
+                <p class="text-gray-600 mb-4">Get real-time updates when your shipment status changes.</p>
+                <input type="email" id="customerEmail" placeholder="customer@example.com" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all">
+            </div>
+
+            <!-- Upload Section -->
+            <div class="bg-white rounded-2xl shadow-xl p-8 mb-8 card-hover">
+                <div class="flex items-center space-x-3 mb-4">
+                    <i class="ri-upload-cloud-2-line text-2xl text-purple-600"></i>
+                    <h2 class="text-2xl font-bold text-gray-800">Upload Shipping Label</h2>
+                </div>
+                <div class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-purple-500 transition-all cursor-pointer" id="uploadArea">
+                    <i class="ri-image-add-line text-5xl text-gray-400 mb-3"></i>
+                    <p class="text-gray-600 mb-2">Click or drag and drop</p>
+                    <p class="text-gray-400 text-sm">PNG, JPG, JPEG up to 5MB</p>
+                    <input type="file" id="fileInput" accept="image/*" class="hidden">
+                    <button onclick="document.getElementById('fileInput').click()" class="mt-4 bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-all">Choose File</button>
+                </div>
+                <div id="preview" class="mt-4 text-center"></div>
+            </div>
+
+            <!-- Submit Button -->
+            <button id="sendBtn" class="w-full gradient-bg text-white font-bold py-4 rounded-xl text-lg transition-all hover:opacity-90 flex items-center justify-center space-x-2">
+                <i class="ri-send-plane-line"></i>
+                <span>Create Tracking Record</span>
+            </button>
+
+            <!-- Result Section -->
+            <div id="output" class="mt-8 bg-gray-50 rounded-xl p-6 border border-gray-200 hidden">
+                <div class="flex items-center space-x-2 mb-3">
+                    <i class="ri-checkbox-circle-line text-green-500 text-xl"></i>
+                    <h3 class="font-bold text-gray-800">Result</h3>
+                </div>
+                <div id="outputContent"></div>
+            </div>
+        </div>
     </div>
-    
-    <div class="section">
-        <h3>📁 Upload Shipping Label</h3>
-        <input type="file" id="fileInput" accept="image/*">
-        <div id="preview"></div>
-    </div>
-    
-    <button id="sendBtn">🚀 Send to OCR & Create Tracking</button>
-    
-    <div class="section">
-        <h3>📋 Result</h3>
-        <div id="output">1. Enter customer email (optional)<br>2. Upload an image<br>3. Click Send</div>
-    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8 mt-16">
+        <div class="container mx-auto px-6 text-center">
+            <p>&copy; 2026 Logistics Capture. Smart shipping label management.</p>
+        </div>
+    </footer>
 
     <script>
         const fileInput = document.getElementById('fileInput');
         const preview = document.getElementById('preview');
         const sendBtn = document.getElementById('sendBtn');
         const output = document.getElementById('output');
+        const outputContent = document.getElementById('outputContent');
         const customerEmail = document.getElementById('customerEmail');
         
         let currentImageData = null;
@@ -64,66 +117,83 @@
             const reader = new FileReader();
             reader.onload = (event) => {
                 currentImageData = event.target.result;
-                preview.innerHTML = `<img src="${currentImageData}" alt="Preview">`;
-                output.innerHTML = '✅ Image loaded! Enter email and click Send.';
+                preview.innerHTML = `<img src="${currentImageData}" class="max-h-64 mx-auto rounded-lg shadow-md" alt="Preview">`;
             };
             reader.readAsDataURL(file);
         });
         
         sendBtn.addEventListener('click', async () => {
             if (!currentImageData) {
-                output.innerHTML = '❌ Please select an image first!';
+                alert('Please select an image first!');
                 return;
             }
             
             const email = customerEmail.value.trim();
-            if (email) {
-                output.innerHTML = '⏳ Sending to OCR with email notification...';
-            } else {
-                output.innerHTML = '⏳ Sending to OCR (no email provided)...';
-            }
             
             sendBtn.disabled = true;
-            sendBtn.textContent = 'Processing...';
+            sendBtn.innerHTML = '<i class="ri-loader-4-line animate-spin"></i><span>Processing...</span>';
             
             try {
                 const response = await fetch('https://logistics-capture.onrender.com/ocr', {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ 
-                        image: currentImageData,
-                        email: email
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: currentImageData, email: email })
                 });
                 
                 const data = await response.json();
                 
                 if (response.ok) {
-                    let html = '✅ <strong>SUCCESS!</strong><br><br>';
-                    html += '<strong>Shipment ID:</strong> ' + data.shipment_id + '<br>';
-                    html += '<strong>Tracking URL:</strong> <a href="' + data.tracking_url + '" target="_blank">' + data.tracking_url + '</a><br>';
-                    html += '<strong>Detected Tracking Number:</strong> ' + (data.tracking_number || 'Not found') + '<br>';
-                    if (email) {
-                        html += '<strong>📧 Email notification sent to:</strong> ' + email + '<br>';
-                    }
-                    html += '<br><strong>Extracted Text:</strong><br><pre>' + (data.full_text || 'No text found') + '</pre>';
-                    output.innerHTML = html;
-                    
-                    // Clear email field after successful upload
+                    output.classList.remove('hidden');
+                    outputContent.innerHTML = `
+                        <div class="space-y-3">
+                            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                                <p class="font-semibold text-green-800">✅ Shipment Created Successfully!</p>
+                            </div>
+                            <div><strong>Shipment ID:</strong> <code class="bg-gray-100 px-2 py-1 rounded">${data.shipment_id}</code></div>
+                            <div><strong>Tracking URL:</strong> <a href="${data.tracking_url}" target="_blank" class="text-purple-600 hover:underline">${data.tracking_url}</a></div>
+                            <div><strong>Tracking Number:</strong> ${data.tracking_number || 'Not detected'}</div>
+                            ${email ? `<div><strong>📧 Email notification sent to:</strong> ${email}</div>` : ''}
+                            <div><strong>Extracted Text:</strong><pre class="bg-gray-100 p-3 rounded-lg mt-2 text-sm overflow-x-auto">${data.full_text || 'No text found'}</pre></div>
+                        </div>
+                    `;
                     customerEmail.value = '';
                     currentImageData = null;
                     preview.innerHTML = '';
                     fileInput.value = '';
                 } else {
-                    output.innerHTML = '❌ Error: ' + (data.error || 'Unknown error');
+                    output.classList.remove('hidden');
+                    outputContent.innerHTML = `<div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">❌ Error: ${data.error}</div>`;
                 }
             } catch (error) {
-                output.innerHTML = '❌ Connection error: ' + error.message;
+                output.classList.remove('hidden');
+                outputContent.innerHTML = `<div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">❌ Connection error: ${error.message}</div>`;
             } finally {
                 sendBtn.disabled = false;
-                sendBtn.textContent = '🚀 Send to OCR & Create Tracking';
+                sendBtn.innerHTML = '<i class="ri-send-plane-line"></i><span>Create Tracking Record</span>';
+            }
+        });
+        
+        // Drag and drop functionality
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('border-purple-500', 'bg-purple-50');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('border-purple-500', 'bg-purple-50');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('border-purple-500', 'bg-purple-50');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    currentImageData = event.target.result;
+                    preview.innerHTML = `<img src="${currentImageData}" class="max-h-64 mx-auto rounded-lg shadow-md" alt="Preview">`;
+                };
+                reader.readAsDataURL(file);
+                fileInput.files = e.dataTransfer.files;
             }
         });
     </script>
