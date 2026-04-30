@@ -10,9 +10,6 @@ from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.mime.image import MIMEImage
-import qrcode
-from io import BytesIO
 
 app = Flask(__name__)
 CORS(app)
@@ -103,83 +100,56 @@ def generate_tracking_number():
     """Generate a unique tracking number like LGS-ABC123XYZ"""
     return f"LGS-{uuid.uuid4().hex[:8].upper()}"
 
-def generate_qr_code(data):
-    """Generate QR code image from data"""
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    return img
-
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-def send_email_with_qr(to_email, shipment_data, tracking_url, qr_image):
-    """Send email with embedded QR code"""
+def send_email_notification(to_email, shipment_data, tracking_url):
+    """Send plain email notification (fast, no timeout)"""
     try:
         msg = MIMEMultipart()
         msg['From'] = EMAIL_ADDRESS
         msg['To'] = to_email
         msg['Subject'] = f"Your Shipment {shipment_data['tracking_code']} Has Been Created"
 
-        # Save QR code to BytesIO
-        qr_bytes = BytesIO()
-        qr_image.save(qr_bytes, format='PNG')
-        qr_bytes.seek(0)
-        
-        # Attach QR code as image
-        qr_img = MIMEImage(qr_bytes.read(), name='qrcode.png')
-        qr_img.add_header('Content-ID', '<qrcode>')
-        msg.attach(qr_img)
-        
-        # Email body
         body = f"""
         <html>
-        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+        <body style="font-family: Arial, sans-serif;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; text-align: center;">
                 <h1 style="color: white;">📦 Logistics Capture</h1>
             </div>
-            <div style="padding: 20px; border: 1px solid #ddd;">
+            <div style="padding: 20px;">
                 <h2>Hello {shipment_data.get('customer_name', 'Customer')},</h2>
                 <p>Your shipment has been successfully created!</p>
-                
-                <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                <div style="background: #f0f0f0; padding: 15px; border-radius: 8px;">
                     <p><strong>📋 Tracking Code:</strong> {shipment_data['tracking_code']}</p>
                     <p><strong>🔢 Tracking Number:</strong> {shipment_data['tracking_number']}</p>
                     <p><strong>📍 Status:</strong> <span style="color: #ffc107;">PENDING</span></p>
                     <p><strong>🏭 Destination Warehouse:</strong> {shipment_data.get('warehouse', 'Not specified')}</p>
                 </div>
-                
                 <div style="text-align: center; margin: 20px 0;">
-                    <img src="cid:qrcode" alt="QR Code" style="max-width: 200px; border: 2px solid #ddd; padding: 10px;">
-                    <p><strong>📱 Scan this QR code to track your shipment instantly</strong></p>
+                    <a href="{tracking_url}" style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px;">🔗 Track Your Shipment</a>
                 </div>
-                
-                <div style="text-align: center; margin: 20px 0;">
-                    <a href="{tracking_url}" style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px;">🔗 Click to Track Shipment</a>
-                </div>
-                
+                <p><strong>📱 QR Code available on tracking page</strong> – open the link above to scan.</p>
                 <hr>
-                <p style="color: #666; font-size: 12px;">Thank you for choosing Logistics Capture. We'll keep you updated on your shipment status.</p>
+                <p>Thank you for using Logistics Capture!</p>
             </div>
         </body>
         </html>
         """
-        
         msg.attach(MIMEText(body, 'html'))
-        
+
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         server.send_message(msg)
         server.quit()
-        print(f"✅ Email with QR sent to {to_email}")
+        print(f"✅ Email sent to {to_email}")
         return True
     except Exception as e:
         print(f"❌ Email error: {e}")
         return False
 
-# ============ NEW SHIPMENT CREATION ROUTE ============
+# ============ SHIPMENT CREATION ROUTE ============
 @app.route('/api/create-shipment', methods=['POST'])
 def create_shipment():
     try:
@@ -220,17 +190,14 @@ def create_shipment():
         
         tracking_url = f"https://logistics-capture.onrender.com/track/{shipment_id}"
         
-        # Generate QR code for tracking URL
-        qr_image = generate_qr_code(tracking_url)
-        
-        # Send email with QR code
+        # Send email notification
         shipment_data = {
             'tracking_code': tracking_code,
             'tracking_number': tracking_number,
             'customer_name': customer_name,
             'warehouse': warehouse
         }
-        send_email_with_qr(customer_email, shipment_data, tracking_url, qr_image)
+        send_email_notification(customer_email, shipment_data, tracking_url)
         
         return jsonify({
             "status": "success",
@@ -325,21 +292,29 @@ def tracking_page(shipment_id):
     if not row:
         return "<h1>Shipment not found</h1><p>Invalid tracking ID</p>", 404
     
-    # Get column indices
-    col_map = {desc[0]: idx for idx, desc in enumerate(c.description)} if hasattr(c, 'description') else {}
+    # Map columns by index
+    tracking_code = row[2] if len(row) > 2 else 'N/A'
+    tracking_number = row[1] if len(row) > 1 else 'N/A'
+    customer_name = row[3] if len(row) > 3 else 'N/A'
+    pickup_address = row[6] if len(row) > 6 else 'N/A'
+    delivery_address = row[7] if len(row) > 7 else 'N/A'
+    warehouse = row[8] if len(row) > 8 else 'N/A'
+    status = row[11] if len(row) > 11 else 'pending'
+    created_at = row[12] if len(row) > 12 else 'N/A'
+    last_updated = row[13] if len(row) > 13 else created_at
     
     status_colors = {
         'pending': '#fff3cd',
         'in transit': '#cfe2ff',
         'delivered': '#d1e7dd'
     }
-    status_color = status_colors.get(row[5] if len(row) > 5 else 'pending', '#fff3cd')
+    status_color = status_colors.get(status, '#fff3cd')
     
     html_string = f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Track Shipment</title>
+        <title>Track Shipment {tracking_code}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; background: #f5f5f5; }}
@@ -356,37 +331,37 @@ def tracking_page(shipment_id):
         <div class="card">
             <h1>📦 Shipment Tracking</h1>
             <div class="status">
-                <h2>Status: {(row[5] if len(row) > 5 else 'PENDING').upper()}</h2>
+                <h2>Status: {status.upper()}</h2>
             </div>
             
             <div class="info-row">
-                <span class="label">📋 Tracking Code:</span> <span class="tracking-code">{row[2] if len(row) > 2 else 'N/A'}</span>
+                <span class="label">📋 Tracking Code:</span> <span class="tracking-code">{tracking_code}</span>
             </div>
             <div class="info-row">
-                <span class="label">🔢 Tracking Number:</span> {row[1] if len(row) > 1 else 'N/A'}
+                <span class="label">🔢 Tracking Number:</span> {tracking_number}
             </div>
             <div class="info-row">
-                <span class="label">👤 Customer:</span> {row[3] if len(row) > 3 else 'N/A'}
+                <span class="label">👤 Customer:</span> {customer_name}
             </div>
             <div class="info-row">
-                <span class="label">📍 Pickup Address:</span> {row[6] if len(row) > 6 else 'N/A'}
+                <span class="label">📍 Pickup Address:</span> {pickup_address}
             </div>
             <div class="info-row">
-                <span class="label">🏠 Delivery Address:</span> {row[7] if len(row) > 7 else 'N/A'}
+                <span class="label">🏠 Delivery Address:</span> {delivery_address}
             </div>
             <div class="info-row">
-                <span class="label">🏭 Warehouse:</span> {row[8] if len(row) > 8 else 'N/A'}
+                <span class="label">🏭 Warehouse:</span> {warehouse}
             </div>
             <div class="info-row">
-                <span class="label">📅 Created:</span> {row[10] if len(row) > 10 else 'N/A'}
+                <span class="label">📅 Created:</span> {created_at}
             </div>
             <div class="info-row">
-                <span class="label">🕐 Last Updated:</span> {row[11] if len(row) > 11 else row[10] if len(row) > 10 else 'N/A'}
+                <span class="label">🕐 Last Updated:</span> {last_updated}
             </div>
             
             <div class="qr-code">
                 <div id="qrcode"></div>
-                <p><strong>📱 Scan to track this shipment</strong></p>
+                <p><strong>📱 Scan this QR code to track this shipment</strong></p>
             </div>
         </div>
         
@@ -496,6 +471,67 @@ def link_shipment():
         conn.close()
         
         return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============ OCR ROUTE (for image upload) ============
+@app.route('/ocr', methods=['POST'])
+def ocr_process():
+    try:
+        data = request.get_json()
+        if not data or 'image' not in data:
+            return jsonify({"error": "No image provided"}), 400
+
+        customer_email = data.get('email', None)
+
+        if ',' in data['image']:
+            image_data = data['image'].split(',')[1]
+        else:
+            image_data = data['image']
+
+        image_bytes = base64.b64decode(image_data)
+
+        response = requests.post(
+            OCR_API_URL,
+            files={'file': ('image.jpg', image_bytes, 'image/jpeg')},
+            data={'apikey': OCR_API_KEY, 'language': 'eng'}
+        )
+
+        result = response.json()
+
+        if result.get('ParsedResults'):
+            full_text = result['ParsedResults'][0]['ParsedText']
+            tracking_number = generate_tracking_number()
+            tracking_code = generate_tracking_code()
+            shipment_id = str(uuid.uuid4())[:8]
+            now = datetime.now().isoformat()
+
+            conn = sqlite3.connect('shipments.db')
+            c = conn.cursor()
+            c.execute('''INSERT INTO shipments 
+                        (id, tracking_number, tracking_code, full_text, status, created_at, last_updated, customer_email) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                      (shipment_id, tracking_number, tracking_code, full_text[:1000], 'pending', now, now, customer_email))
+            conn.commit()
+            conn.close()
+
+            tracking_url = f"https://logistics-capture.onrender.com/track/{shipment_id}"
+            
+            if customer_email:
+                shipment_data = {'tracking_code': tracking_code, 'tracking_number': tracking_number, 'customer_name': 'Customer', 'warehouse': 'N/A'}
+                send_email_notification(customer_email, shipment_data, tracking_url)
+
+            return jsonify({
+                "status": "success",
+                "shipment_id": shipment_id,
+                "tracking_code": tracking_code,
+                "tracking_url": tracking_url,
+                "tracking_number": tracking_number,
+                "full_text": full_text[:500]
+            })
+        else:
+            return jsonify({"error": "No text found"}), 400
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
