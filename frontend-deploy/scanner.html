@@ -5,9 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Barcode/QR Scanner | Logistics Capture</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css" rel="stylesheet">
-    <!-- Use a more reliable QR code scanner library -->
     <script src="https://unpkg.com/@zxing/library@0.21.1/umd/index.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css" rel="stylesheet">
     <style>
         .gradient-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -46,7 +45,6 @@
                     <p class="text-gray-600">Position the barcode or QR code in front of your camera</p>
                 </div>
                 
-                <!-- Video element for camera -->
                 <video id="video-preview" style="width:100%; max-width:500px; margin:0 auto; display:none;" playsinline></video>
                 
                 <div id="scan-result" class="mt-6 hidden">
@@ -123,7 +121,6 @@
                     throw new Error('No camera found');
                 }
                 
-                // Prefer back camera (environment) if available
                 let selectedDeviceId = videoInputDevices[0].deviceId;
                 for (let device of videoInputDevices) {
                     if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment')) {
@@ -141,7 +138,6 @@
                         trackingInput.value = decodedText;
                         scannedData.innerHTML = `<strong>Scanned:</strong> ${decodedText}`;
                         scanResult.classList.remove('hidden');
-                        // Stop scanner after successful scan
                         stopScanner();
                     }
                     if (err && !err) {
@@ -180,14 +176,12 @@
         startBtn.addEventListener('click', startScanner);
         stopBtn.addEventListener('click', stopScanner);
         
-        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (codeReader && isScanning) {
                 codeReader.reset().catch(e => console.log(e));
             }
         });
         
-        // Create shipment
         const createBtn = document.getElementById('create-shipment');
         const shipmentResult = document.getElementById('shipment-result');
         const customerEmail = document.getElementById('customer-email');
@@ -205,14 +199,11 @@
             createBtn.innerHTML = '<i class="ri-loader-4-line animate-spin"></i><span>Creating...</span>';
             
             try {
-                const placeholderText = `Tracking Number: ${trackingNumber}`;
-                const base64Image = btoa(unescape(encodeURIComponent(placeholderText)));
-                
-                const response = await fetch('https://logistics-capture.onrender.com/ocr', {
+                const response = await fetch('https://logistics-capture.onrender.com/api/create-from-tracking', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        image: `data:text/plain;base64,${base64Image}`,
+                        tracking_number: trackingNumber,
                         email: email
                     })
                 });

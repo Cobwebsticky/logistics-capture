@@ -280,6 +280,45 @@ def tracking_page(shipment_id):
 
     return html_string
 
+# ============ SCANNER DIRECT ENDPOINT ============
+@app.route('/api/create-from-tracking', methods=['POST'])
+def create_from_tracking():
+    try:
+        data = request.get_json()
+        tracking_number = data.get('tracking_number')
+        customer_email = data.get('email')
+        
+        if not tracking_number:
+            return jsonify({"error": "Tracking number required"}), 400
+        
+        shipment_id = str(uuid.uuid4())[:8]
+        now = datetime.now().isoformat()
+        full_text = f"Tracking Number: {tracking_number}"
+        
+        conn = sqlite3.connect('shipments.db')
+        c = conn.cursor()
+        c.execute('''INSERT INTO shipments 
+                    (id, tracking_number, full_text, status, created_at, last_updated, customer_email) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                  (shipment_id, tracking_number, full_text[:1000], 'pending', now, now, customer_email))
+        conn.commit()
+        conn.close()
+        
+        tracking_url = f"https://logistics-capture.onrender.com/track/{shipment_id}"
+        
+        if customer_email:
+            send_email_notification(customer_email, shipment_id, 'pending', tracking_url)
+        
+        return jsonify({
+            "status": "success",
+            "shipment_id": shipment_id,
+            "tracking_url": tracking_url,
+            "tracking_number": tracking_number,
+            "full_text": full_text
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ============ AUTHENTICATION ROUTES ============
 @app.route('/api/register', methods=['POST'])
 def register():
