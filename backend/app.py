@@ -10,6 +10,9 @@ from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
+import qrcode
+from io import BytesIO
 
 app = Flask(__name__)
 CORS(app)
@@ -18,34 +21,50 @@ CORS(app)
 EMAIL_ADDRESS = "cobweb.sticky@gmail.com"
 EMAIL_PASSWORD = "rrzp sbdh akhc jalf".replace(" ", "")
 
-OCR_API_KEY = "helloworld"
-OCR_API_URL = "https://api.ocr.space/parse/image"
-
 # ============ DATABASE SETUP ============
 conn = sqlite3.connect('shipments.db')
 c = conn.cursor()
 
-# Shipments table
+# Shipments table with all customer details
 c.execute('''
     CREATE TABLE IF NOT EXISTS shipments (
         id TEXT PRIMARY KEY,
-        tracking_number TEXT,
-        full_text TEXT,
+        tracking_number TEXT UNIQUE,
+        tracking_code TEXT UNIQUE,
+        customer_name TEXT,
+        customer_email TEXT,
+        customer_phone TEXT,
+        pickup_address TEXT,
+        delivery_address TEXT,
+        warehouse TEXT,
+        notes TEXT,
         status TEXT,
         created_at TEXT,
-        last_updated TEXT,
-        customer_email TEXT
+        last_updated TEXT
     )
 ''')
 
-# Add customer_email column if missing
-try:
-    c.execute('ALTER TABLE shipments ADD COLUMN customer_email TEXT')
-    print("✅ Added customer_email column")
-except sqlite3.OperationalError:
-    print("ℹ️ customer_email column already exists")
+# Add missing columns if needed
+columns_to_add = [
+    ('tracking_number', 'TEXT'),
+    ('tracking_code', 'TEXT'),
+    ('customer_name', 'TEXT'),
+    ('customer_email', 'TEXT'),
+    ('customer_phone', 'TEXT'),
+    ('pickup_address', 'TEXT'),
+    ('delivery_address', 'TEXT'),
+    ('warehouse', 'TEXT'),
+    ('notes', 'TEXT')
+]
 
-# Users table for login portal
+for col_name, col_type in columns_to_add:
+    try:
+        c.execute(f'ALTER TABLE shipments ADD COLUMN {col_name} {col_type}')
+        print(f"✅ Added {col_name} column")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+# Users table
 c.execute('''
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
@@ -71,160 +90,230 @@ conn.commit()
 conn.close()
 
 # ============ HELPER FUNCTIONS ============
+def generate_tracking_code():
+    """Generate a unique tracking code like LGS-2024-001234"""
+    conn = sqlite3.connect('shipments.db')
+    c = conn.cursor()
+    count = len(c.execute('SELECT id FROM shipments').fetchall()) + 1
+    conn.close()
+    year = datetime.now().year
+    return f"LGS-{year}-{count:06d}"
+
+def generate_tracking_number():
+    """Generate a unique tracking number like LGS-ABC123XYZ"""
+    return f"LGS-{uuid.uuid4().hex[:8].upper()}"
+
+def generate_qr_code(data):
+    """Generate QR code image from data"""
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    return img
+
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-def send_email_notification(to_email, shipment_id, status, tracking_url):
-    if not to_email:
-        return False
+def send_email_with_qr(to_email, shipment_data, tracking_url, qr_image):
+    """Send email with embedded QR code"""
     try:
         msg = MIMEMultipart()
         msg['From'] = EMAIL_ADDRESS
         msg['To'] = to_email
-        msg['Subject'] = f"Shipment {shipment_id} Status Update: {status.upper()}"
+        msg['Subject'] = f"Your Shipment {shipment_data['tracking_code']} Has Been Created"
+
+        # Save QR code to BytesIO
+        qr_bytes = BytesIO()
+        qr_image.save(qr_bytes, format='PNG')
+        qr_bytes.seek(0)
+        
+        # Attach QR code as image
+        qr_img = MIMEImage(qr_bytes.read(), name='qrcode.png')
+        qr_img.add_header('Content-ID', '<qrcode>')
+        msg.attach(qr_img)
+        
+        # Email body
         body = f"""
         <html>
-        <body style="font-family: Arial, sans-serif;">
-            <h2>📦 Shipment Status Update</h2>
-            <p>Your shipment <strong>{shipment_id}</strong> has been updated.</p>
-            <p><strong>New Status:</strong> <span style="color: #007bff;">{status.upper()}</span></p>
-            <p><strong>Tracking Link:</strong> <a href="{tracking_url}">{tracking_url}</a></p>
-            <hr>
-            <p>Thank you for using our logistics service!</p>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+                <h1 style="color: white;">📦 Logistics Capture</h1>
+            </div>
+            <div style="padding: 20px; border: 1px solid #ddd;">
+                <h2>Hello {shipment_data.get('customer_name', 'Customer')},</h2>
+                <p>Your shipment has been successfully created!</p>
+                
+                <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                    <p><strong>📋 Tracking Code:</strong> {shipment_data['tracking_code']}</p>
+                    <p><strong>🔢 Tracking Number:</strong> {shipment_data['tracking_number']}</p>
+                    <p><strong>📍 Status:</strong> <span style="color: #ffc107;">PENDING</span></p>
+                    <p><strong>🏭 Destination Warehouse:</strong> {shipment_data.get('warehouse', 'Not specified')}</p>
+                </div>
+                
+                <div style="text-align: center; margin: 20px 0;">
+                    <img src="cid:qrcode" alt="QR Code" style="max-width: 200px; border: 2px solid #ddd; padding: 10px;">
+                    <p><strong>📱 Scan this QR code to track your shipment instantly</strong></p>
+                </div>
+                
+                <div style="text-align: center; margin: 20px 0;">
+                    <a href="{tracking_url}" style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px;">🔗 Click to Track Shipment</a>
+                </div>
+                
+                <hr>
+                <p style="color: #666; font-size: 12px;">Thank you for choosing Logistics Capture. We'll keep you updated on your shipment status.</p>
+            </div>
         </body>
         </html>
         """
+        
         msg.attach(MIMEText(body, 'html'))
+        
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         server.send_message(msg)
         server.quit()
-        print(f"✅ Email sent to {to_email}")
+        print(f"✅ Email with QR sent to {to_email}")
         return True
     except Exception as e:
         print(f"❌ Email error: {e}")
         return False
 
-def extract_tracking_number(text):
-    patterns = [
-        r'\b1Z[A-Z0-9]{16}\b',
-        r'\b\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\b',
-        r'\b[A-Z]{2}\d{9}[A-Z]{2}\b',
-        r'\b\d{12,22}\b',
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            return match.group(0)
-    return None
-
-# ============ BASIC ROUTES ============
-@app.route('/')
-def home():
-    return jsonify({"message": "Logistics Capture API", "status": "running"})
-
-@app.route('/health')
-def health():
-    return jsonify({"status": "alive"})
-
-# ============ OCR ROUTE ============
-@app.route('/ocr', methods=['POST'])
-def ocr_process():
+# ============ NEW SHIPMENT CREATION ROUTE ============
+@app.route('/api/create-shipment', methods=['POST'])
+def create_shipment():
     try:
         data = request.get_json()
-        if not data or 'image' not in data:
-            return jsonify({"error": "No image provided"}), 400
-
-        customer_email = data.get('email', None)
-
-        if ',' in data['image']:
-            image_data = data['image'].split(',')[1]
-        else:
-            image_data = data['image']
-
-        image_bytes = base64.b64decode(image_data)
-
-        response = requests.post(
-            OCR_API_URL,
-            files={'file': ('image.jpg', image_bytes, 'image/jpeg')},
-            data={'apikey': OCR_API_KEY, 'language': 'eng'}
-        )
-
-        result = response.json()
-
-        if result.get('ParsedResults'):
-            full_text = result['ParsedResults'][0]['ParsedText']
-            tracking_number = extract_tracking_number(full_text)
-
-            shipment_id = str(uuid.uuid4())[:8]
-            now = datetime.now().isoformat()
-
-            conn = sqlite3.connect('shipments.db')
-            c = conn.cursor()
-            c.execute('''INSERT INTO shipments 
-                        (id, tracking_number, full_text, status, created_at, last_updated, customer_email) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                      (shipment_id, tracking_number, full_text[:1000], 'pending', now, now, customer_email))
-            conn.commit()
-            conn.close()
-
-            tracking_url = f"https://logistics-capture.onrender.com/track/{shipment_id}"
-            
-            if customer_email:
-                send_email_notification(customer_email, shipment_id, 'pending', tracking_url)
-
-            return jsonify({
-                "status": "success",
-                "shipment_id": shipment_id,
-                "tracking_url": tracking_url,
-                "tracking_number": tracking_number,
-                "full_text": full_text[:500]
-            })
-        else:
-            return jsonify({"error": "No text found"}), 400
-
+        
+        # Get customer details
+        customer_name = data.get('customer_name')
+        customer_email = data.get('customer_email')
+        customer_phone = data.get('customer_phone')
+        pickup_address = data.get('pickup_address')
+        delivery_address = data.get('delivery_address')
+        warehouse = data.get('warehouse')
+        notes = data.get('notes', '')
+        
+        # Validate required fields
+        if not all([customer_name, customer_email, customer_phone, pickup_address, delivery_address, warehouse]):
+            return jsonify({"error": "All required fields must be filled"}), 400
+        
+        # Generate unique identifiers
+        shipment_id = str(uuid.uuid4())[:8]
+        tracking_code = generate_tracking_code()
+        tracking_number = generate_tracking_number()
+        now = datetime.now().isoformat()
+        
+        # Save to database
+        conn = sqlite3.connect('shipments.db')
+        c = conn.cursor()
+        c.execute('''INSERT INTO shipments 
+                    (id, tracking_number, tracking_code, customer_name, customer_email, 
+                     customer_phone, pickup_address, delivery_address, warehouse, notes, 
+                     status, created_at, last_updated) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (shipment_id, tracking_number, tracking_code, customer_name, customer_email,
+                   customer_phone, pickup_address, delivery_address, warehouse, notes,
+                   'pending', now, now))
+        conn.commit()
+        conn.close()
+        
+        tracking_url = f"https://logistics-capture.onrender.com/track/{shipment_id}"
+        
+        # Generate QR code for tracking URL
+        qr_image = generate_qr_code(tracking_url)
+        
+        # Send email with QR code
+        shipment_data = {
+            'tracking_code': tracking_code,
+            'tracking_number': tracking_number,
+            'customer_name': customer_name,
+            'warehouse': warehouse
+        }
+        send_email_with_qr(customer_email, shipment_data, tracking_url, qr_image)
+        
+        return jsonify({
+            "status": "success",
+            "shipment_id": shipment_id,
+            "tracking_code": tracking_code,
+            "tracking_number": tracking_number,
+            "tracking_url": tracking_url,
+            "customer_name": customer_name,
+            "customer_email": customer_email,
+            "message": f"Shipment created successfully! Email sent to {customer_email}"
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ============ SHIPMENT ROUTES ============
-@app.route('/shipments')
-def list_shipments():
-    conn = sqlite3.connect('shipments.db')
-    c = conn.cursor()
-    c.execute('SELECT id, tracking_number, status, created_at, customer_email FROM shipments ORDER BY created_at DESC')
-    rows = c.fetchall()
-    conn.close()
-    shipments = [{"id": r[0], "tracking_number": r[1], "status": r[2], "created_at": r[3], "customer_email": r[4]} for r in rows]
-    return jsonify(shipments)
-
+# ============ UPDATE SHIPMENT STATUS ============
 @app.route('/update/<shipment_id>/<new_status>', methods=['POST'])
 def update_status(shipment_id, new_status):
     try:
         conn = sqlite3.connect('shipments.db')
         c = conn.cursor()
-        c.execute('SELECT customer_email FROM shipments WHERE id = ?', (shipment_id,))
+        
+        # Get shipment details for email
+        c.execute('SELECT customer_email, tracking_code, customer_name FROM shipments WHERE id = ?', (shipment_id,))
         result = c.fetchone()
-        customer_email = result[0] if result else None
-
+        
+        if not result:
+            conn.close()
+            return jsonify({"error": "Shipment not found"}), 404
+        
+        customer_email = result[0]
+        tracking_code = result[1]
+        customer_name = result[2]
+        
+        # Update status
         c.execute('UPDATE shipments SET status = ?, last_updated = ? WHERE id = ?',
                   (new_status, datetime.now().isoformat(), shipment_id))
         conn.commit()
-
-        if c.rowcount == 0:
-            conn.close()
-            return jsonify({"error": "Shipment not found"}), 404
-
         conn.close()
-
+        
+        # Send status update email
         if customer_email:
-            tracking_url = f"https://logistics-capture.onrender.com/track/{shipment_id}"
-            send_email_notification(customer_email, shipment_id, new_status, tracking_url)
-
+            try:
+                msg = MIMEMultipart()
+                msg['From'] = EMAIL_ADDRESS
+                msg['To'] = customer_email
+                msg['Subject'] = f"Shipment {tracking_code} Status Update: {new_status.upper()}"
+                
+                status_colors = {
+                    'pending': '#ffc107',
+                    'in transit': '#17a2b8',
+                    'delivered': '#28a745'
+                }
+                color = status_colors.get(new_status, '#ffc107')
+                
+                body = f"""
+                <html>
+                <body style="font-family: Arial, sans-serif;">
+                    <h2>📦 Shipment Status Update</h2>
+                    <p>Hello {customer_name or 'Customer'},</p>
+                    <p>Your shipment <strong>{tracking_code}</strong> has been updated.</p>
+                    <p><strong>New Status:</strong> <span style="background: {color}; color: white; padding: 5px 10px; border-radius: 5px;">{new_status.upper()}</span></p>
+                    <p><strong>Tracking Link:</strong> <a href="https://logistics-capture.onrender.com/track/{shipment_id}">Click here to track</a></p>
+                    <hr>
+                    <p>Thank you for using Logistics Capture!</p>
+                </body>
+                </html>
+                """
+                msg.attach(MIMEText(body, 'html'))
+                
+                server = smtplib.SMTP('smtp.gmail.com', 587)
+                server.starttls()
+                server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                server.send_message(msg)
+                server.quit()
+                print(f"✅ Status update email sent to {customer_email}")
+            except Exception as e:
+                print(f"❌ Status email error: {e}")
+        
         return jsonify({"success": True, "shipment_id": shipment_id, "new_status": new_status})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ============ TRACKING PAGE ============
 @app.route('/track/<shipment_id>')
 def tracking_page(shipment_id):
     conn = sqlite3.connect('shipments.db')
@@ -232,92 +321,98 @@ def tracking_page(shipment_id):
     c.execute('SELECT * FROM shipments WHERE id = ?', (shipment_id,))
     row = c.fetchone()
     conn.close()
-
+    
     if not row:
-        html_string = "<h1>Shipment not found</h1><p>Invalid tracking ID</p>"
-    else:
-        status_color = {
-            'pending': '#fff3cd',
-            'in transit': '#cfe2ff',
-            'delivered': '#d1e7dd'
-        }.get(row[3].lower(), '#fff3cd')
-        
-        status_border = {
-            'pending': '#ffc107',
-            'in transit': '#0d6efd',
-            'delivered': '#198754'
-        }.get(row[3].lower(), '#ffc107')
-
-        html_string = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Track Shipment {shipment_id}</title>
-            <style>
-                body {{ font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; }}
-                .status {{ padding: 20px; border-radius: 10px; margin: 20px 0; background: {status_color}; border: 1px solid {status_border}; }}
-                h1 {{ color: #333; }}
-                .tracking-number {{ font-size: 24px; font-weight: bold; color: #007bff; }}
-            </style>
-        </head>
-        <body>
+        return "<h1>Shipment not found</h1><p>Invalid tracking ID</p>", 404
+    
+    # Get column indices
+    col_map = {desc[0]: idx for idx, desc in enumerate(c.description)} if hasattr(c, 'description') else {}
+    
+    status_colors = {
+        'pending': '#fff3cd',
+        'in transit': '#cfe2ff',
+        'delivered': '#d1e7dd'
+    }
+    status_color = status_colors.get(row[5] if len(row) > 5 else 'pending', '#fff3cd')
+    
+    html_string = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Track Shipment</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; background: #f5f5f5; }}
+            .card {{ background: white; border-radius: 15px; padding: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+            .status {{ padding: 20px; border-radius: 10px; margin: 20px 0; background: {status_color}; }}
+            h1 {{ color: #333; margin-top: 0; }}
+            .tracking-code {{ font-size: 28px; font-weight: bold; color: #007bff; }}
+            .info-row {{ margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 8px; }}
+            .label {{ font-weight: bold; color: #555; }}
+            .qr-code {{ text-align: center; margin: 20px 0; }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
             <h1>📦 Shipment Tracking</h1>
             <div class="status">
-                <h2>Status: {row[3].upper()}</h2>
+                <h2>Status: {(row[5] if len(row) > 5 else 'PENDING').upper()}</h2>
             </div>
-            <p><strong>Shipment ID:</strong> {row[0]}</p>
-            <p><strong>Tracking Number:</strong> <span class="tracking-number">{row[1] if row[1] else 'Not detected'}</span></p>
-            <p><strong>Created:</strong> {row[4]}</p>
-            <p><strong>Last Updated:</strong> {row[5] if row[5] else row[4]}</p>
-            <hr>
-            <h3>Extracted Text:</h3>
-            <pre style="background:#f0f0f0; padding:15px; border-radius:5px; overflow:auto;">{row[2][:500]}</pre>
-            <p><a href="/shipments">← View all shipments</a></p>
-            <p><a href="https://logistics-frontend-x78f.onrender.com/customer-portal.html">🔐 Customer Portal →</a></p>
-        </body>
-        </html>
-        """
-
+            
+            <div class="info-row">
+                <span class="label">📋 Tracking Code:</span> <span class="tracking-code">{row[2] if len(row) > 2 else 'N/A'}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">🔢 Tracking Number:</span> {row[1] if len(row) > 1 else 'N/A'}
+            </div>
+            <div class="info-row">
+                <span class="label">👤 Customer:</span> {row[3] if len(row) > 3 else 'N/A'}
+            </div>
+            <div class="info-row">
+                <span class="label">📍 Pickup Address:</span> {row[6] if len(row) > 6 else 'N/A'}
+            </div>
+            <div class="info-row">
+                <span class="label">🏠 Delivery Address:</span> {row[7] if len(row) > 7 else 'N/A'}
+            </div>
+            <div class="info-row">
+                <span class="label">🏭 Warehouse:</span> {row[8] if len(row) > 8 else 'N/A'}
+            </div>
+            <div class="info-row">
+                <span class="label">📅 Created:</span> {row[10] if len(row) > 10 else 'N/A'}
+            </div>
+            <div class="info-row">
+                <span class="label">🕐 Last Updated:</span> {row[11] if len(row) > 11 else row[10] if len(row) > 10 else 'N/A'}
+            </div>
+            
+            <div class="qr-code">
+                <div id="qrcode"></div>
+                <p><strong>📱 Scan to track this shipment</strong></p>
+            </div>
+        </div>
+        
+        <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+        <script>
+            new QRCode(document.getElementById("qrcode"), {{
+                text: window.location.href,
+                width: 150,
+                height: 150
+            }});
+        </script>
+    </body>
+    </html>
+    """
     return html_string
 
-# ============ SCANNER DIRECT ENDPOINT ============
-@app.route('/api/create-from-tracking', methods=['POST'])
-def create_from_tracking():
-    try:
-        data = request.get_json()
-        tracking_number = data.get('tracking_number')
-        customer_email = data.get('email')
-        
-        if not tracking_number:
-            return jsonify({"error": "Tracking number required"}), 400
-        
-        shipment_id = str(uuid.uuid4())[:8]
-        now = datetime.now().isoformat()
-        full_text = f"Tracking Number: {tracking_number}"
-        
-        conn = sqlite3.connect('shipments.db')
-        c = conn.cursor()
-        c.execute('''INSERT INTO shipments 
-                    (id, tracking_number, full_text, status, created_at, last_updated, customer_email) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                  (shipment_id, tracking_number, full_text[:1000], 'pending', now, now, customer_email))
-        conn.commit()
-        conn.close()
-        
-        tracking_url = f"https://logistics-capture.onrender.com/track/{shipment_id}"
-        
-        if customer_email:
-            send_email_notification(customer_email, shipment_id, 'pending', tracking_url)
-        
-        return jsonify({
-            "status": "success",
-            "shipment_id": shipment_id,
-            "tracking_url": tracking_url,
-            "tracking_number": tracking_number,
-            "full_text": full_text
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+# ============ LIST ALL SHIPMENTS ============
+@app.route('/shipments')
+def list_shipments():
+    conn = sqlite3.connect('shipments.db')
+    c = conn.cursor()
+    c.execute('SELECT id, tracking_code, tracking_number, customer_name, customer_email, status, created_at FROM shipments ORDER BY created_at DESC')
+    rows = c.fetchall()
+    conn.close()
+    shipments = [{"id": r[0], "tracking_code": r[1], "tracking_number": r[2], "customer_name": r[3], "customer_email": r[4], "status": r[5], "created_at": r[6]} for r in rows]
+    return jsonify(shipments)
 
 # ============ AUTHENTICATION ROUTES ============
 @app.route('/api/register', methods=['POST'])
@@ -375,7 +470,7 @@ def get_user_shipments(user_id):
     conn = sqlite3.connect('shipments.db')
     c = conn.cursor()
     c.execute('''
-        SELECT s.id, s.tracking_number, s.status, s.created_at, s.last_updated
+        SELECT s.id, s.tracking_code, s.tracking_number, s.status, s.created_at, s.customer_name
         FROM shipments s
         JOIN user_shipments us ON s.id = us.shipment_id
         WHERE us.user_id = ?
@@ -384,7 +479,7 @@ def get_user_shipments(user_id):
     rows = c.fetchall()
     conn.close()
     
-    shipments = [{"id": r[0], "tracking_number": r[1], "status": r[2], "created_at": r[3], "last_updated": r[4]} for r in rows]
+    shipments = [{"id": r[0], "tracking_code": r[1], "tracking_number": r[2], "status": r[3], "created_at": r[4], "customer_name": r[5]} for r in rows]
     return jsonify(shipments)
 
 @app.route('/api/link-shipment', methods=['POST'])
@@ -403,6 +498,15 @@ def link_shipment():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# Health check
+@app.route('/health')
+def health():
+    return jsonify({"status": "alive"})
+
+@app.route('/')
+def home():
+    return jsonify({"message": "Logistics Capture API", "status": "running"})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

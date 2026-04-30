@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Shipment | Logistics Capture</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <nav class="gradient-bg shadow-lg">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <i class="ri-ship-2-line text-2xl text-white"></i>
+                    <span class="text-xl font-bold text-white">Create New Shipment</span>
+                </div>
+                <div class="flex space-x-3">
+                    <a href="/" class="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-all">
+                        <i class="ri-home-line"></i> Home
+                    </a>
+                    <a href="/customer-portal.html" class="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition-all">
+                        <i class="ri-user-line"></i> Portal
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-6 py-12">
+        <div class="max-w-3xl mx-auto">
+            <div class="bg-white rounded-2xl shadow-xl p-8">
+                <div class="text-center mb-6">
+                    <i class="ri-file-copy-line text-5xl text-purple-600"></i>
+                    <h2 class="text-2xl font-bold text-gray-800 mt-2">Create a New Shipment</h2>
+                    <p class="text-gray-600">Enter customer details to generate tracking number and QR code</p>
+                </div>
+
+                <form id="shipment-form">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 font-semibold mb-2">Customer Name *</label>
+                            <input type="text" id="customer_name" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-semibold mb-2">Customer Email *</label>
+                            <input type="email" id="customer_email" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-semibold mb-2">Customer Phone *</label>
+                            <input type="tel" id="customer_phone" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 font-semibold mb-2">Destination Warehouse *</label>
+                            <select id="warehouse" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                                <option value="">Select Warehouse</option>
+                                <option value="Nairobi Main Warehouse">Nairobi Main Warehouse</option>
+                                <option value="Mombasa Port Warehouse">Mombasa Port Warehouse</option>
+                                <option value="Kisumu Logistics Hub">Kisumu Logistics Hub</option>
+                                <option value="Eldoret Distribution Center">Eldoret Distribution Center</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-gray-700 font-semibold mb-2">Pickup Address *</label>
+                            <textarea id="pickup_address" rows="2" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"></textarea>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-gray-700 font-semibold mb-2">Delivery Address *</label>
+                            <textarea id="delivery_address" rows="2" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"></textarea>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-gray-700 font-semibold mb-2">Notes (Optional)</label>
+                            <textarea id="notes" rows="2" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"></textarea>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="mt-6 w-full gradient-bg text-white font-semibold py-3 rounded-lg transition-all hover:opacity-90 flex items-center justify-center space-x-2">
+                        <i class="ri-send-plane-line"></i>
+                        <span>Create Shipment & Send QR Code</span>
+                    </button>
+                </form>
+
+                <div id="result" class="mt-6 hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('shipment-form');
+        const resultDiv = document.getElementById('result');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                customer_name: document.getElementById('customer_name').value,
+                customer_email: document.getElementById('customer_email').value,
+                customer_phone: document.getElementById('customer_phone').value,
+                pickup_address: document.getElementById('pickup_address').value,
+                delivery_address: document.getElementById('delivery_address').value,
+                warehouse: document.getElementById('warehouse').value,
+                notes: document.getElementById('notes').value
+            };
+            
+            resultDiv.classList.remove('hidden');
+            resultDiv.innerHTML = '<div class="bg-blue-100 text-blue-700 p-4 rounded-lg flex items-center space-x-2"><i class="ri-loader-4-line animate-spin"></i><span>Creating shipment and sending QR code...</span></div>';
+            
+            try {
+                const response = await fetch('https://logistics-capture.onrender.com/api/create-shipment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="bg-green-100 border border-green-400 rounded-lg p-4">
+                            <p class="font-semibold text-green-800 mb-2">✅ ${data.message}</p>
+                            <div class="space-y-2 mt-3">
+                                <p><strong>📋 Tracking Code:</strong> ${data.tracking_code}</p>
+                                <p><strong>🔢 Tracking Number:</strong> ${data.tracking_number}</p>
+                                <p><strong>👤 Customer:</strong> ${data.customer_name}</p>
+                                <p><strong>📧 Email sent to:</strong> ${data.customer_email}</p>
+                                <p class="mt-3"><a href="${data.tracking_url}" target="_blank" class="text-purple-600 hover:underline">🔗 View Tracking Page →</a></p>
+                            </div>
+                        </div>
+                    `;
+                    form.reset();
+                } else {
+                    resultDiv.innerHTML = `<div class="bg-red-100 border border-red-400 rounded-lg p-4 text-red-800">❌ Error: ${data.error}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="bg-red-100 border border-red-400 rounded-lg p-4 text-red-800">❌ Connection error: ${error.message}</div>`;
+            }
+        });
+    </script>
+</body>
+</html>
